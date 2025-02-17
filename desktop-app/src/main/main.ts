@@ -32,6 +32,7 @@ import { initHttpBasicAuthHandlers } from './http-basic-auth';
 import { initAppMetaHandlers } from './app-meta';
 import { openUrl } from './protocol-handler';
 import { AppUpdater } from './app-updater';
+import { screen } from 'electron';
 
 let windowShownOnOpen = false;
 
@@ -50,6 +51,10 @@ let urlToOpen: string | undefined = cli.input[0]?.includes('electronmon')
   : cli.input[0];
 
 let mainWindow: BrowserWindow | null = null;
+
+let lastHeight: number | null = null;
+let lastWidth: number | null = null;
+let hasBeenMinimized: boolean = false;
 
 initAppMetaHandlers();
 initWebviewContextMenu();
@@ -229,6 +234,41 @@ const createWindow = async () => {
     }
   });
 
+  function isSnapped(win: BrowserWindow) {
+    let display = screen.getPrimaryDisplay();
+    let displayDim = display.workAreaSize;
+    let size = win.getSize();
+    if (Math.abs(size[0] / displayDim.width - 0.5) < 0.1 && Math.abs(size[1] / displayDim.height - 1) < 0.1) {
+      return true;
+    }
+    return false;
+  }
+
+  mainWindow.on('will-resize', () => {
+    lastWidth = mainWindow?.getSize()[0];
+    lastHeight = mainWindow?.getSize()[1];
+  });
+
+  mainWindow.on('minimize', () => {
+    hasBeenMinimized = true;
+  });
+
+  mainWindow.on('moved', () => {
+    if (isSnapped(mainWindow) && hasBeenMinimized) {
+      if (lastWidth == null || lastHeight == null) {
+        lastWidth = width;
+        lastHeight = height;
+      }
+      mainWindow?.setBounds({
+        width: lastWidth,
+        height: lastHeight,
+        x: mainWindow.getPosition()[0],
+        y: mainWindow.getPosition()[1]
+      });
+      hasBeenMinimized = false;
+    }
+  });
+  
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     console.log('window open handler', url);
     return { action: 'deny' };
